@@ -76,6 +76,9 @@ export interface Rectification {
   completedAt?: string;
   photoRef?: string;
   shelfId?: string;
+  ruleId?: string;
+  layerId?: string;
+  productId?: string;
 }
 
 export type PhotoType = 'standard' | 'onsite';
