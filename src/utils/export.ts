@@ -155,28 +155,72 @@ function generateReportHtml(data: ReportData): string {
       <div style="margin-bottom: 20px;">
         <h2 style="font-size: 18px; font-weight: bold; color: #1e3a5f; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb;">五、整改清单</h2>
         ${rectifications.length === 0 ? `
-          <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 14px;">暂无整改项</div>
+          <div style="padding: 30px; text-align: center; color: #9ca3af; font-size: 14px; background: #f9fafb; border-radius: 8px;">
+            该门店暂无整改项
+          </div>
         ` : `
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${rectifications.map((rect, index) => {
-              const statusText = statusLabels[rect.status] || rect.status;
-              const statusColor = statusColors[rect.status] || '#6b7280';
+          ${(() => {
+            const pending = rectifications.filter(r => r.status === 'pending');
+            const inProgress = rectifications.filter(r => r.status === 'in_progress');
+            const completed = rectifications.filter(r => r.status === 'completed');
+
+            const priorityLabels: Record<string, string> = { low: '低', medium: '中', high: '高', urgent: '紧急' };
+            const priorityColors: Record<string, string> = {
+              low: '#6b7280',
+              medium: '#3b82f6',
+              high: '#f97316',
+              urgent: '#ef4444',
+            };
+
+            const renderGroup = (title: string, items: typeof rectifications, bgColor: string) => {
+              if (items.length === 0) return '';
               return `
-                <div style="padding: 12px 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                    <div style="font-size: 14px; font-weight: 500; color: #111827;">${index + 1}. ${rect.title}</div>
-                    <span style="font-size: 11px; padding: 2px 8px; background: ${statusColor}15; color: ${statusColor}; border-radius: 4px; font-weight: 500; flex-shrink: 0; margin-left: 10px;">${statusText}</span>
+                <div style="margin-bottom: 16px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                  <div style="width: 3px; height: 14px; background: ${bgColor}; border-radius: 2px;"></div>
+                    <h3 style="font-size: 14px; font-weight: 600; color: #374151; margin: 0;">${title}</h3>
+                    <span style="font-size: 11px; color: #6b7280; background: #f3f4f6; padding: 1px 6px; border-radius: 4px;">${items.length} 项</span>
                   </div>
-                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 8px; white-space: pre-line; line-height: 1.6;">${rect.description}</div>
-                  <div style="display: flex; gap: 20px; font-size: 11px; color: #6b7280;">
-                    <span>负责人：${rect.assignee}</span>
-                    <span>截止日期：${rect.dueDate}</span>
-                    ${rect.completedAt ? `<span style="color: #22c55e;">完成时间：${rect.completedAt}</span>` : ''}
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
+                    ${items.map((rect, idx) => `
+                      <div style="padding: 12px; background: #fafafa; border-radius: 6px; border: 1px solid #e5e7eb; border-left: 3px solid ${bgColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                          <div style="font-size: 13px; font-weight: 500; color: #111827; flex: 1;">${idx + 1}. ${rect.title}</div>
+                          ${rect.priority ? `
+                            <span style="font-size: 10px; padding: 2px 6px; background: ${priorityColors[rect.priority]}15; color: ${priorityColors[rect.priority]}; border-radius: 4px; margin-left: 8px; flex-shrink: 0;">
+                              ${priorityLabels[rect.priority]}
+                            </span>
+                          ` : ''}
+                        </div>
+                        <div style="font-size: 12px; color: #4b5563; margin-bottom: 8px; white-space: pre-line; line-height: 1.6;">
+                          ${rect.description}
+                        </div>
+                        ${rect.resolutionNote ? `
+                          <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px; padding: 6px 8px; background: #f0fdf4; border-radius: 4px;">
+                            <span style="font-weight: 500; color: #16a34a;">处理说明：</span>${rect.resolutionNote}
+                          </div>
+                        ` : ''}
+                        <div style="display: flex; gap: 16px; font-size: 11px; color: #6b7280;">
+                          <span>负责人：${rect.assignee}</span>
+                          <span>截止日期：${rect.dueDate || '-'}</span>
+                          ${rect.completedAt ? `<span style="color: #22c55e;">完成：${rect.completedAt}</span>` : ''}
+                        </div>
+                        ${rect.afterPhotoUrl ? `
+                          <div style="margin-top: 8px;">
+                            <img src="${rect.afterPhotoUrl}" alt="整改后照片" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #e5e7eb;" />
+                          </div>
+                        ` : ''}
+                      </div>
+                    `).join('')}
                   </div>
                 </div>
               `;
-            }).join('')}
-          </div>
+            };
+
+            return renderGroup('待处理', pending, '#f59e0b') +
+              renderGroup('进行中', inProgress, '#3b82f6') +
+              renderGroup('已完成', completed, '#22c55e');
+          })()}
         `}
       </div>
 

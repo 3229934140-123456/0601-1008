@@ -61,9 +61,11 @@ export interface RuleViolation {
   shelfId?: string;
   layerId?: string;
   productId?: string;
+  productIds?: string[];
 }
 
 export type RectificationStatus = 'pending' | 'in_progress' | 'completed';
+export type RectificationPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Rectification {
   id: string;
@@ -71,14 +73,18 @@ export interface Rectification {
   description: string;
   assignee: string;
   status: RectificationStatus;
+  priority: RectificationPriority;
   createdAt: string;
   dueDate: string;
   completedAt?: string;
+  resolutionNote?: string;
+  afterPhotoUrl?: string;
   photoRef?: string;
   shelfId?: string;
   ruleId?: string;
   layerId?: string;
   productId?: string;
+  productIds?: string[];
 }
 
 export type PhotoType = 'standard' | 'onsite';

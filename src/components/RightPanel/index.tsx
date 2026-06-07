@@ -1,9 +1,11 @@
-import { Shield, ListTodo, FileDown, AlertCircle, CheckCircle, Clock, Plus, User, Calendar, Download, Image, FileText, ListTodo as ListTodoIcon, CheckCheck } from 'lucide-react';
+import { Shield, ListTodo, FileDown, AlertCircle, CheckCircle, Clock, Plus, User, Calendar, Download, Image, FileText, ListTodo as ListTodoIcon, CheckCheck, LayoutGrid, AlignLeft, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getStatusColor, getStatusLabel } from '@/utils';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { staffMembers } from '@/data/mockData';
+import { RectificationDetailModal } from '@/components/RectificationDetailModal';
+import { Rectification, RectificationStatus, RectificationPriority } from '@/types';
 
 type TabType = 'rules' | 'rectifications' | 'export';
 
@@ -175,14 +177,32 @@ function RulesPanel() {
 
 function RectificationsPanel() {
   const { rectifications, updateRectificationStatus, assignRectification, addRectification } = useAppStore();
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newAssignee, setNewAssignee] = useState(staffMembers[0]);
+  const [selectedRect, setSelectedRect] = useState<Rectification | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const pendingCount = rectifications.filter(r => r.status === 'pending').length;
-  const inProgressCount = rectifications.filter(r => r.status === 'in_progress').length;
-  const completedCount = rectifications.filter(r => r.status === 'completed').length;
+  const pendingRects = rectifications.filter(r => r.status === 'pending');
+  const inProgressRects = rectifications.filter(r => r.status === 'in_progress');
+  const completedRects = rectifications.filter(r => r.status === 'completed');
+
+  const getPriorityLabel = (priority?: RectificationPriority) => {
+    const map: Record<RectificationPriority, string> = { low: '低', medium: '中', high: '高', urgent: '紧急' };
+    return map[priority || 'medium'];
+  };
+
+  const getPriorityColor = (priority?: RectificationPriority) => {
+    const map: Record<RectificationPriority, string> = {
+      low: 'text-gray-500 bg-gray-100',
+      medium: 'text-blue-600 bg-blue-100',
+      high: 'text-orange-600 bg-orange-100',
+      urgent: 'text-red-600 bg-red-100',
+    };
+    return map[priority || 'medium'];
+  };
 
   const handleAdd = () => {
     if (!newTitle.trim()) return;
@@ -191,38 +211,156 @@ function RectificationsPanel() {
       description: newDesc,
       assignee: newAssignee,
       status: 'pending',
-      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN'),
+      priority: 'medium',
+      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN'),
     });
     setNewTitle('');
     setNewDesc('');
     setShowAddForm(false);
   };
 
+  const openDetail = (rect: Rectification) => {
+    setSelectedRect(rect);
+    setShowDetailModal(true);
+  };
+
+  const renderCard = (rect: Rectification) => (
+    <div
+      key={rect.id}
+      onClick={() => openDetail(rect)}
+      className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h4 className="text-sm font-medium text-gray-900 flex-1 line-clamp-2">{rect.title}</h4>
+        <span className={cn(
+          "text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap",
+          getPriorityColor(rect.priority)
+        )}>
+          {getPriorityLabel(rect.priority)}
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mb-2 line-clamp-2">{rect.description}</p>
+      <div className="flex items-center justify-between text-xs text-gray-400">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <User className="w-3 h-3" />
+            {rect.assignee}
+          </span>
+          <span className="flex items-center gap-1">
+            <Calendar className="w-3 h-3" />
+            {rect.dueDate?.split(' ')[0]}
+          </span>
+        </div>
+      </div>
+      {rect.afterPhotoUrl && (
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          <img src={rect.afterPhotoUrl} alt="" className="w-12 h-12 object-cover rounded border" />
+        </div>
+      )}
+      {rect.status !== 'completed' && (
+        <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+          <select
+            value={rect.assignee}
+            onChange={(e) => assignRectification(rect.id, e.target.value)}
+            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded"
+          >
+            {staffMembers.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          {rect.status === 'pending' && (
+            <button
+              onClick={() => updateRectificationStatus(rect.id, 'in_progress')}
+              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+            >
+              开始
+            </button>
+          )}
+          {rect.status === 'in_progress' && (
+            <button
+              onClick={() => updateRectificationStatus(rect.id, 'completed')}
+              className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100"
+            >
+              完成
+            </button>
+          )}
+        </div>
+      )}
+      {rect.completedAt && (
+        <div className="text-[10px] text-green-600 mt-2 flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          完成: {rect.completedAt}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderKanbanColumn = (title: string, count: number, items: Rectification[], status: RectificationStatus, color: string) => (
+    <div className="flex-1 min-w-0 flex flex-col">
+      <div className={cn(
+        "flex items-center justify-between px-2 py-2 rounded-t-lg text-xs font-medium",
+        color
+      )}>
+        <span>{title}</span>
+        <span className="bg-white/80 px-1.5 py-0.5 rounded text-[10px]">{count}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 bg-gray-50 rounded-b-lg space-y-2 min-h-[200px]">
+        {items.length === 0 ? (
+          <div className="text-center text-[10px] text-gray-400 py-4">暂无任务</div>
+        ) : (
+          items.map(rect => renderCard(rect))
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between mb-3">
+      <div className="p-3 border-b border-gray-200 bg-white">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-bold text-gray-900">整改清单</h3>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            <Plus className="w-3 h-3" />
-            添加
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'
+              )}
+              title="列表视图"
+            >
+              <AlignLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                viewMode === 'kanban' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'
+              )}
+              title="看板视图"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="ml-1 flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              <Plus className="w-3 h-3" />
+              添加
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            待处理 {pendingCount}
+            待处理 {pendingRects.length}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-blue-500" />
-            进行中 {inProgressCount}
+            进行中 {inProgressRects.length}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-green-500" />
-            已完成 {completedCount}
+            已完成 {completedRects.length}
           </span>
         </div>
       </div>
@@ -269,69 +407,97 @@ function RectificationsPanel() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {rectifications.map((rect) => (
-          <div key={rect.id} className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-sm transition-shadow">
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <h4 className="text-sm font-medium text-gray-900 flex-1">{rect.title}</h4>
-              <span className={cn(
-                "text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap",
-                getStatusColor(rect.status)
-              )}>
-                {getStatusLabel(rect.status)}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mb-3 line-clamp-2">{rect.description}</p>
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <User className="w-3 h-3" />
-                  {rect.assignee}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {rect.dueDate.split(' ')[0]}
-                </span>
-              </div>
-            </div>
-            {rect.status !== 'completed' && (
-              <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
-                <select
-                  value={rect.assignee}
-                  onChange={(e) => assignRectification(rect.id, e.target.value)}
-                  className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded"
-                >
-                  {staffMembers.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                {rect.status === 'pending' && (
-                  <button
-                    onClick={() => updateRectificationStatus(rect.id, 'in_progress')}
-                    className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
-                  >
-                    开始
-                  </button>
+      <div className="flex-1 overflow-hidden">
+        {viewMode === 'list' ? (
+          <div className="h-full overflow-y-auto p-3 space-y-2">
+            {rectifications.map(rect => (
+              <div
+                key={rect.id}
+                onClick={() => openDetail(rect)}
+                className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-sm hover:border-blue-300 transition-all cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h4 className="text-sm font-medium text-gray-900 flex-1">{rect.title}</h4>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded",
+                      getPriorityColor(rect.priority)
+                    )}>
+                      {getPriorityLabel(rect.priority)}
+                    </span>
+                    <span className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-full",
+                      getStatusColor(rect.status)
+                    )}>
+                      {getStatusLabel(rect.status)}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mb-3 line-clamp-2">{rect.description}</p>
+                <div className="flex items-center justify-between text-xs text-gray-400">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {rect.assignee}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {rect.dueDate?.split(' ')[0]}
+                    </span>
+                  </div>
+                </div>
+                {rect.status !== 'completed' && (
+                  <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={rect.assignee}
+                      onChange={(e) => assignRectification(rect.id, e.target.value)}
+                      className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded"
+                    >
+                      {staffMembers.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    {rect.status === 'pending' && (
+                      <button
+                        onClick={() => updateRectificationStatus(rect.id, 'in_progress')}
+                        className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                      >
+                        开始
+                      </button>
+                    )}
+                    {rect.status === 'in_progress' && (
+                      <button
+                        onClick={() => updateRectificationStatus(rect.id, 'completed')}
+                        className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100"
+                      >
+                        完成
+                      </button>
+                    )}
+                  </div>
                 )}
-                {rect.status === 'in_progress' && (
-                  <button
-                    onClick={() => updateRectificationStatus(rect.id, 'completed')}
-                    className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100"
-                  >
-                    完成
-                  </button>
+                {rect.completedAt && (
+                  <div className="text-[10px] text-green-600 mt-2 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    完成时间: {rect.completedAt}
+                  </div>
                 )}
               </div>
-            )}
-            {rect.completedAt && (
-              <div className="text-[10px] text-green-600 mt-2 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                完成时间: {rect.completedAt}
-              </div>
-            )}
+            ))}
           </div>
-        ))}
+        ) : (
+          <div className="h-full flex gap-2 p-2">
+            {renderKanbanColumn('待处理', pendingRects.length, pendingRects, 'pending', 'bg-amber-100 text-amber-700')}
+            {renderKanbanColumn('进行中', inProgressRects.length, inProgressRects, 'in_progress', 'bg-blue-100 text-blue-700')}
+            {renderKanbanColumn('已完成', completedRects.length, completedRects, 'completed', 'bg-green-100 text-green-700')}
+          </div>
+        )}
       </div>
+
+      <RectificationDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        rectification={selectedRect}
+      />
     </div>
   );
 }

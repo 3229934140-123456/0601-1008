@@ -89,6 +89,7 @@ interface AppState {
   removeLayer: (shelfId: string, layerId: string) => void;
 
   addRectification: (rect: Omit<Rectification, 'id' | 'createdAt'>) => void;
+  updateRectification: (id: string, updates: Partial<Rectification>) => void;
   updateRectificationStatus: (id: string, status: Rectification['status']) => void;
   assignRectification: (id: string, assignee: string) => void;
 
@@ -317,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const state = get();
       const currentRects = state.storeRectifications[state.currentStoreId] || [];
       const newRect: Rectification = {
+        priority: 'medium',
         ...rect,
         id: `rect-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         createdAt: new Date().toLocaleString('zh-CN'),
@@ -325,19 +327,26 @@ export const useAppStore = create<AppState>((set, get) => {
       set(updateStoreRectifications(state, state.currentStoreId, newRects));
     },
 
-    updateRectificationStatus: (id, status) => {
+    updateRectification: (id, updates) => {
       const state = get();
       const currentRects = state.storeRectifications[state.currentStoreId] || [];
-      const newRects = currentRects.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status,
-              completedAt: status === 'completed' ? new Date().toLocaleString('zh-CN') : undefined,
-            }
-          : r
-      );
+      const newRects = currentRects.map((r) => {
+        if (r.id !== id) return r;
+        const updated = { ...r, ...updates };
+        if (updates.status === 'completed' && !updated.completedAt) {
+          updated.completedAt = new Date().toLocaleString('zh-CN');
+        }
+        if (updates.status && updates.status !== 'completed') {
+          updated.completedAt = undefined;
+        }
+        return updated;
+      });
       set(updateStoreRectifications(state, state.currentStoreId, newRects));
+    },
+
+    updateRectificationStatus: (id, status) => {
+      const state = get();
+      get().updateRectification(id, { status });
     },
 
     assignRectification: (id, assignee) => {
@@ -440,18 +449,24 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentRects = state.storeRectifications[state.currentStoreId] || [];
       const currentShelves = state.storeShelves[state.currentStoreId] || [];
 
-      const exists = currentRects.some(
-        r => r.ruleId === violation.ruleId &&
-             r.shelfId === violation.shelfId &&
-             r.layerId === violation.layerId &&
-             r.productId === violation.productId
-      );
+      const exists = currentRects.some((r) => {
+        if (r.ruleId !== violation.ruleId) return false;
+        if (r.shelfId !== violation.shelfId) return false;
+        if (r.layerId !== violation.layerId) return false;
+        if (violation.productIds && r.productIds) {
+          const vIds = [...violation.productIds].sort().join(',');
+          const rIds = [...r.productIds].sort().join(',');
+          return vIds === rIds;
+        }
+        return r.productId === violation.productId;
+      });
 
       if (exists) {
         return { success: false, alreadyExists: true };
       }
 
-      const shelfName = currentShelves.find(s => s.id === violation.shelfId)?.name || '未知货架';
+      const shelfName = currentShelves.find((s) => s.id === violation.shelfId)?.name || '未知货架';
+      const priority = violation.severity === 'error' ? 'high' : violation.severity === 'warning' ? 'medium' : 'low';
 
       const newRect: Rectification = {
         id: `rect-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -459,12 +474,14 @@ export const useAppStore = create<AppState>((set, get) => {
         description: `违规说明：${violation.description}\n关联货架：${shelfName}`,
         assignee: '张三',
         status: 'pending',
+        priority,
         createdAt: new Date().toLocaleString('zh-CN'),
         dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN'),
         shelfId: violation.shelfId,
         ruleId: violation.ruleId,
         layerId: violation.layerId,
         productId: violation.productId,
+        productIds: violation.productIds,
       };
 
       const newRects = [...currentRects, newRect];
@@ -510,6 +527,7 @@ export const useAppStore = create<AppState>((set, get) => {
                     severity: 'error',
                     shelfId: shelf.id,
                     layerId: layer.id,
+                    productIds: [productList[i].productId, productList[i + 1].productId],
                   });
                 }
               }
