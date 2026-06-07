@@ -31,35 +31,27 @@ function deepCloneShelves(shelves: Shelf[]): Shelf[] {
 
 function initStoreShelves(): Record<string, Shelf[]> {
   const result: Record<string, Shelf[]> = {};
-  mockStores.forEach((store, index) => {
-    if (index === 0) {
-      result[store.id] = deepCloneShelves(mockShelves);
-    } else {
-      result[store.id] = deepCloneShelves(mockShelves).map(shelf => ({
-        ...shelf,
-        id: `${shelf.id}-${store.id}`,
-        layers: shelf.layers.map(layer => ({
-          ...layer,
-          id: `${layer.id}-${store.id}`,
-        })),
-      }));
-    }
+  mockStores.forEach((store) => {
+    result[store.id] = deepCloneShelves(mockShelves).map(shelf => ({
+      ...shelf,
+      id: `${shelf.id}-${store.id}`,
+      layers: shelf.layers.map(layer => ({
+        ...layer,
+        id: `${layer.id}-${store.id}`,
+      })),
+    }));
   });
   return result;
 }
 
 function initStoreRectifications(): Record<string, Rectification[]> {
   const result: Record<string, Rectification[]> = {};
-  mockStores.forEach((store, index) => {
-    if (index === 0) {
-      result[store.id] = [...mockRectifications];
-    } else {
-      result[store.id] = mockRectifications.map(r => ({
-        ...r,
-        id: `${r.id}-${store.id}`,
-        shelfId: `${r.shelfId}-${store.id}`,
-      }));
-    }
+  mockStores.forEach((store) => {
+    result[store.id] = mockRectifications.map(r => ({
+      ...r,
+      id: `${r.id}-${store.id}`,
+      shelfId: `${r.shelfId}-${store.id}`,
+    }));
   });
   return result;
 }
@@ -78,7 +70,6 @@ interface AppState {
   activePanel: 'rules' | 'rectifications' | 'export';
   violations: RuleViolation[];
   totalScore: number;
-
   shelves: Shelf[];
   rectifications: Rectification[];
 
@@ -113,41 +104,65 @@ interface AppState {
   calculateScore: () => void;
 }
 
+function updateStoreShelves(state: AppState, storeId: string, newShelves: Shelf[]): Partial<AppState> {
+  const isCurrentStore = storeId === state.currentStoreId;
+  return {
+    storeShelves: {
+      ...state.storeShelves,
+      [storeId]: newShelves,
+    },
+    ...(isCurrentStore ? { shelves: newShelves } : {}),
+  };
+}
+
+function updateStoreRectifications(state: AppState, storeId: string, newRects: Rectification[]): Partial<AppState> {
+  const isCurrentStore = storeId === state.currentStoreId;
+  return {
+    storeRectifications: {
+      ...state.storeRectifications,
+      [storeId]: newRects,
+    },
+    ...(isCurrentStore ? { rectifications: newRects } : {}),
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => {
-  const initialShelves = initStoreShelves();
-  const initialRectifications = initStoreRectifications();
+  const initialStoreShelves = initStoreShelves();
+  const initialStoreRectifications = initStoreRectifications();
   const firstStoreId = mockStores[0].id;
+  const firstShelves = initialStoreShelves[firstStoreId];
+  const firstRects = initialStoreRectifications[firstStoreId];
 
   return {
     currentStoreId: firstStoreId,
     stores: mockStores,
     products: mockProducts,
-    storeShelves: initialShelves,
-    storeRectifications: initialRectifications,
+    storeShelves: initialStoreShelves,
+    storeRectifications: initialStoreRectifications,
     rules: mockRules,
     photos: mockPhotos,
-    currentShelfId: initialShelves[firstStoreId][0]?.id || 'shelf-1',
+    currentShelfId: firstShelves[0]?.id || '',
     selectedCategory: '全部',
     searchKeyword: '',
     activePanel: 'rules',
     violations: [],
     totalScore: 100,
-
-    get shelves() {
-      const state = get();
-      return state.storeShelves[state.currentStoreId] || [];
-    },
-
-    get rectifications() {
-      const state = get();
-      return state.storeRectifications[state.currentStoreId] || [];
-    },
+    shelves: firstShelves,
+    rectifications: firstRects,
 
     setCurrentStore: (id) => {
       const state = get();
-      const storeShelves = state.storeShelves[id];
-      const firstShelfId = storeShelves?.[0]?.id || state.currentShelfId;
-      set({ currentStoreId: id, currentShelfId: firstShelfId });
+      const newShelves = state.storeShelves[id] || [];
+      const newRects = state.storeRectifications[id] || [];
+      const firstShelfId = newShelves[0]?.id || '';
+
+      set({
+        currentStoreId: id,
+        shelves: newShelves,
+        rectifications: newRects,
+        currentShelfId: firstShelfId,
+      });
+
       get().calculateViolations();
       get().calculateScore();
     },
@@ -158,230 +173,180 @@ export const useAppStore = create<AppState>((set, get) => {
     setActivePanel: (panel) => set({ activePanel: panel }),
 
     addProductToLayer: (shelfId, layerId, productId, position, facings) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.map((layer) => {
-              if (layer.id !== layerId) return layer;
-              const newProduct: ShelfProduct = { productId, position, facings };
-              return { ...layer, products: [...layer.products, newProduct] };
-            }),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.map((layer) => {
+            if (layer.id !== layerId) return layer;
+            const newProduct: ShelfProduct = { productId, position, facings };
+            return { ...layer, products: [...layer.products, newProduct] };
+          }),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     removeProductFromLayer: (shelfId, layerId, productId) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.map((layer) => {
-              if (layer.id !== layerId) return layer;
-              return {
-                ...layer,
-                products: layer.products.filter((p) => p.productId !== productId),
-              };
-            }),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.map((layer) => {
+            if (layer.id !== layerId) return layer;
+            return {
+              ...layer,
+              products: layer.products.filter((p) => p.productId !== productId),
+            };
+          }),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     moveProductInLayer: (shelfId, layerId, productId, newPosition) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.map((layer) => {
-              if (layer.id !== layerId) return layer;
-              return {
-                ...layer,
-                products: layer.products.map((p) =>
-                  p.productId === productId ? { ...p, position: newPosition } : p
-                ),
-              };
-            }),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.map((layer) => {
+            if (layer.id !== layerId) return layer;
+            return {
+              ...layer,
+              products: layer.products.map((p) =>
+                p.productId === productId ? { ...p, position: newPosition } : p
+              ),
+            };
+          }),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     updateProductFacings: (shelfId, layerId, productId, facings) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.map((layer) => {
-              if (layer.id !== layerId) return layer;
-              return {
-                ...layer,
-                products: layer.products.map((p) =>
-                  p.productId === productId ? { ...p, facings } : p
-                ),
-              };
-            }),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.map((layer) => {
+            if (layer.id !== layerId) return layer;
+            return {
+              ...layer,
+              products: layer.products.map((p) =>
+                p.productId === productId ? { ...p, facings } : p
+              ),
+            };
+          }),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     updateLayerHeight: (shelfId, layerId, height) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.map((layer) =>
-              layer.id === layerId ? { ...layer, height } : layer
-            ),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.map((layer) =>
+            layer.id === layerId ? { ...layer, height } : layer
+          ),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
     },
 
     addLayer: (shelfId) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          const newLayer: ShelfLayer = {
-            id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            height: 30,
-            position: shelf.layers.length,
-            products: [],
-          };
-          return { ...shelf, layers: [...shelf.layers, newLayer] };
-        });
-        return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
+        const newLayer: ShelfLayer = {
+          id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          height: 30,
+          position: shelf.layers.length,
+          products: [],
         };
+        return { ...shelf, layers: [...shelf.layers, newLayer] };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     removeLayer: (shelfId, layerId) => {
-      set((state) => {
-        const currentShelves = state.storeShelves[state.currentStoreId] || [];
-        const newShelves = currentShelves.map((shelf) => {
-          if (shelf.id !== shelfId) return shelf;
-          return {
-            ...shelf,
-            layers: shelf.layers.filter((l) => l.id !== layerId),
-          };
-        });
+      const state = get();
+      const currentShelves = state.storeShelves[state.currentStoreId] || [];
+      const newShelves = currentShelves.map((shelf) => {
+        if (shelf.id !== shelfId) return shelf;
         return {
-          storeShelves: {
-            ...state.storeShelves,
-            [state.currentStoreId]: newShelves,
-          },
+          ...shelf,
+          layers: shelf.layers.filter((l) => l.id !== layerId),
         };
       });
+
+      set(updateStoreShelves(state, state.currentStoreId, newShelves));
       get().calculateViolations();
       get().calculateScore();
     },
 
     addRectification: (rect) => {
-      set((state) => {
-        const currentRects = state.storeRectifications[state.currentStoreId] || [];
-        const newRect: Rectification = {
-          ...rect,
-          id: `rect-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          createdAt: new Date().toLocaleString('zh-CN'),
-        };
-        return {
-          storeRectifications: {
-            ...state.storeRectifications,
-            [state.currentStoreId]: [...currentRects, newRect],
-          },
-        };
-      });
+      const state = get();
+      const currentRects = state.storeRectifications[state.currentStoreId] || [];
+      const newRect: Rectification = {
+        ...rect,
+        id: `rect-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        createdAt: new Date().toLocaleString('zh-CN'),
+      };
+      const newRects = [...currentRects, newRect];
+      set(updateStoreRectifications(state, state.currentStoreId, newRects));
     },
 
     updateRectificationStatus: (id, status) => {
-      set((state) => {
-        const currentRects = state.storeRectifications[state.currentStoreId] || [];
-        return {
-          storeRectifications: {
-            ...state.storeRectifications,
-            [state.currentStoreId]: currentRects.map((r) =>
-              r.id === id
-                ? {
-                    ...r,
-                    status,
-                    completedAt: status === 'completed' ? new Date().toLocaleString('zh-CN') : undefined,
-                  }
-                : r
-            ),
-          },
-        };
-      });
+      const state = get();
+      const currentRects = state.storeRectifications[state.currentStoreId] || [];
+      const newRects = currentRects.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              status,
+              completedAt: status === 'completed' ? new Date().toLocaleString('zh-CN') : undefined,
+            }
+          : r
+      );
+      set(updateStoreRectifications(state, state.currentStoreId, newRects));
     },
 
     assignRectification: (id, assignee) => {
-      set((state) => {
-        const currentRects = state.storeRectifications[state.currentStoreId] || [];
-        return {
-          storeRectifications: {
-            ...state.storeRectifications,
-            [state.currentStoreId]: currentRects.map((r) =>
-              r.id === id ? { ...r, assignee } : r
-            ),
-          },
-        };
-      });
+      const state = get();
+      const currentRects = state.storeRectifications[state.currentStoreId] || [];
+      const newRects = currentRects.map((r) =>
+        r.id === id ? { ...r, assignee } : r
+      );
+      set(updateStoreRectifications(state, state.currentStoreId, newRects));
     },
 
     addPhoto: (photo) => {
@@ -426,10 +391,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const copiedShelves = deepCloneShelves(sourceShelves).map(shelf => ({
         ...shelf,
-        id: shelf.id.replace(`-${sourceId}`, '').replace(/^shelf-/, `shelf-${targetId}-`),
+        id: shelf.id.replace(`-${sourceId}`, `-${targetId}`),
         layers: shelf.layers.map(layer => ({
           ...layer,
-          id: layer.id.replace(`-${sourceId}`, '').replace(/^layer-/, `layer-${targetId}-`),
+          id: layer.id.replace(`-${sourceId}`, `-${targetId}`),
         })),
       }));
 
@@ -437,22 +402,30 @@ export const useAppStore = create<AppState>((set, get) => {
       const copiedRects = sourceRects.map(rect => ({
         ...rect,
         id: `${rect.id}-copy-${targetId}`,
-        shelfId: rect.shelfId.replace(`-${sourceId}`, '').replace(/^shelf-/, `shelf-${targetId}-`),
+        shelfId: rect.shelfId?.replace(`-${sourceId}`, `-${targetId}`),
       }));
 
-      set(state => ({
-        storeShelves: {
-          ...state.storeShelves,
-          [targetId]: copiedShelves,
-        },
-        storeRectifications: {
-          ...state.storeRectifications,
-          [targetId]: copiedRects,
-        },
-        currentShelfId: copiedShelves[0]?.id || state.currentShelfId,
-      }));
+      const newStoreShelves = {
+        ...state.storeShelves,
+        [targetId]: copiedShelves,
+      };
+      const newStoreRectifications = {
+        ...state.storeRectifications,
+        [targetId]: copiedRects,
+      };
 
-      if (state.currentStoreId === targetId) {
+      const isTargetCurrent = targetId === state.currentStoreId;
+      set({
+        storeShelves: newStoreShelves,
+        storeRectifications: newStoreRectifications,
+        ...(isTargetCurrent ? {
+          shelves: copiedShelves,
+          rectifications: copiedRects,
+          currentShelfId: copiedShelves[0]?.id || state.currentShelfId,
+        } : {}),
+      });
+
+      if (isTargetCurrent) {
         get().calculateViolations();
         get().calculateScore();
       }
@@ -494,12 +467,8 @@ export const useAppStore = create<AppState>((set, get) => {
         productId: violation.productId,
       };
 
-      set(state => ({
-        storeRectifications: {
-          ...state.storeRectifications,
-          [state.currentStoreId]: [...currentRects, newRect],
-        },
-      }));
+      const newRects = [...currentRects, newRect];
+      set(updateStoreRectifications(state, state.currentStoreId, newRects));
 
       return { success: true, alreadyExists: false };
     },
