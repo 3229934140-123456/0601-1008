@@ -3,7 +3,11 @@ import { Store, MapPin, Copy, ChevronDown, Star, LayoutDashboard } from 'lucide-
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 
-export function Header() {
+interface HeaderProps {
+  onOpenCopyTemplate?: () => void;
+}
+
+export function Header({ onOpenCopyTemplate }: HeaderProps) {
   const { stores, currentStoreId, setCurrentStore, totalScore } = useAppStore();
   const [storeDropdownOpen, setStoreDropdownOpen] = useState(false);
 
@@ -75,7 +79,13 @@ export function Header() {
                 ))}
               </div>
               <div className="border-t p-3">
-                <button className="w-full flex items-center justify-center gap-2 text-sm text-blue-600 hover:text-blue-700 py-2 rounded hover:bg-blue-50">
+                <button
+                  onClick={() => {
+                    onOpenCopyTemplate?.();
+                    setStoreDropdownOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 text-sm text-blue-600 hover:text-blue-700 py-2 rounded hover:bg-blue-50"
+                >
                   <Copy className="w-4 h-4" />
                   复制门店模板
                 </button>

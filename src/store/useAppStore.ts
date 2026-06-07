@@ -56,8 +56,10 @@ interface AppState {
   addPhoto: (photo: Omit<Photo, 'id' | 'uploadTime'>) => void;
   removePhoto: (id: string) => void;
 
-  copyStoreTemplate: (sourceStoreId: string, targetStoreId: string) => void;
+  copyStoreTemplate: (sourceStoreId: string, targetStoreId: string) => { success: boolean; error?: string };
   saveAsTemplate: (storeId: string) => void;
+  addRectificationFromViolation: (violation: RuleViolation) => { success: boolean; alreadyExists: boolean };
+  getStoreById: (id: string) => StoreInfo | undefined;
 
   calculateViolations: () => void;
   calculateScore: () => void;
@@ -268,8 +270,87 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  copyStoreTemplate: () => {},
+  copyStoreTemplate: (sourceId, targetId) => {
+    const state = get();
+    const sourceStore = state.stores.find(s => s.id === sourceId);
+    const targetStore = state.stores.find(s => s.id === targetId);
+
+    if (!sourceStore && !targetStore) {
+      return { success: false, error: '源门店和目标门店都不存在' };
+    }
+    if (!sourceStore) {
+      return { success: false, error: '源门店不存在' };
+    }
+    if (!targetStore) {
+      return { success: false, error: '目标门店不存在' };
+    }
+    if (sourceId === targetId) {
+      return { success: false, error: '源门店和目标门店不能相同' };
+    }
+
+    const sourceShelves = state.shelves.filter(s => s.id.startsWith('shelf-'));
+    if (sourceShelves.length === 0) {
+      return { success: false, error: '源门店没有货架数据' };
+    }
+
+    const newShelves = sourceShelves.map(shelf => ({
+      ...shelf,
+      id: `${shelf.id}-${targetId}`,
+      layers: shelf.layers.map(layer => ({
+        ...layer,
+        id: `${layer.id}-${targetId}`,
+        products: layer.products.map(p => ({ ...p })),
+      })),
+    }));
+
+    const otherShelves = state.shelves.filter(s => !s.id.endsWith(`-${targetId}`) && !s.id.startsWith('shelf-'));
+    
+    set({
+      shelves: [...otherShelves, ...newShelves],
+      currentShelfId: newShelves[0]?.id || state.currentShelfId,
+    });
+
+    get().calculateViolations();
+    get().calculateScore();
+
+    return { success: true };
+  },
+
   saveAsTemplate: () => {},
+
+  addRectificationFromViolation: (violation) => {
+    const state = get();
+    const exists = state.rectifications.some(
+      r => r.title === violation.description && r.shelfId === violation.shelfId
+    );
+
+    if (exists) {
+      return { success: false, alreadyExists: true };
+    }
+
+    const shelfName = state.shelves.find(s => s.id === violation.shelfId)?.name || '未知货架';
+    
+    const newRect: Rectification = {
+      id: `rect-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      title: violation.description.length > 30 ? violation.description.substring(0, 30) + '...' : violation.description,
+      description: `${violation.description}\n关联货架：${shelfName}`,
+      assignee: '张三',
+      status: 'pending',
+      createdAt: new Date().toLocaleString('zh-CN'),
+      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN'),
+      shelfId: violation.shelfId,
+    };
+
+    set(state => ({
+      rectifications: [...state.rectifications, newRect],
+    }));
+
+    return { success: true, alreadyExists: false };
+  },
+
+  getStoreById: (id) => {
+    return get().stores.find(s => s.id === id);
+  },
 
   calculateViolations: () => {
     const state = get();

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Layers, Plus, Trash2, Settings, ChevronLeft, ChevronRight, Package } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
-import { findNearestPosition, getShelfTypeLabel, calculateLayerFillRate } from '@/utils';
+import { findNearestPosition, getShelfTypeLabel, calculateLayerFillRate, getMaxFacingsForProduct, canAddNewProduct, canPlaceProduct } from '@/utils';
 import { cn } from '@/lib/utils';
 import { Product, ShelfLayer } from '@/types';
 
@@ -250,6 +250,11 @@ export function ShelfCanvas() {
 
     if (source === 'library') {
       const facings = 1;
+      
+      if (!canAddNewProduct(product.width, currentShelf.totalWidth, layer.products, products)) {
+        return;
+      }
+      
       const newPosition = findNearestPosition(
         position,
         product.width,
@@ -258,7 +263,10 @@ export function ShelfCanvas() {
         layer.products,
         products
       );
-      addProductToLayer(currentShelfId, layerId, productId, newPosition, facings);
+      
+      if (canPlaceProduct(product.width, facings, newPosition, currentShelf.totalWidth, layer.products, products)) {
+        addProductToLayer(currentShelfId, layerId, productId, newPosition, facings);
+      }
     } else if (source === 'shelf') {
       const sp = layer.products.find((p) => p.productId === productId);
       if (!sp) return;
@@ -291,8 +299,27 @@ export function ShelfCanvas() {
     removeProductFromLayer(currentShelfId, layerId, productId);
   };
 
-  const handleUpdateFacings = (layerId: string, productId: string, facings: number) => {
-    updateProductFacings(currentShelfId, layerId, productId, facings);
+  const handleUpdateFacings = (layerId: string, productId: string, newFacings: number) => {
+    if (!currentShelf) return;
+    
+    const layer = currentShelf.layers.find(l => l.id === layerId);
+    const product = products.find(p => p.id === productId);
+    const sp = layer?.products.find(p => p.productId === productId);
+    
+    if (!layer || !product || !sp) return;
+    
+    const maxFacings = getMaxFacingsForProduct(
+      productId,
+      product.width,
+      sp.facings,
+      sp.position,
+      currentShelf.totalWidth,
+      layer.products,
+      products
+    );
+    
+    const finalFacings = Math.min(Math.max(1, newFacings), maxFacings);
+    updateProductFacings(currentShelfId, layerId, productId, finalFacings);
   };
 
   const handleHeightChange = (layerId: string, height: number) => {

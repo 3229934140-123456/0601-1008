@@ -4,13 +4,15 @@ import { ProductLibrary } from '@/components/ProductLibrary';
 import { ShelfCanvas } from '@/components/ShelfCanvas';
 import { RightPanel } from '@/components/RightPanel';
 import { PhotoCompare } from '@/components/PhotoCompare';
+import { CopyTemplateModal } from '@/components/CopyTemplateModal';
 import { useAppStore } from '@/store/useAppStore';
-import { GalleryHorizontalEnd, Image, ListTodo, FileDown, Copy, Save } from 'lucide-react';
+import { GalleryHorizontalEnd, Image as ImageIcon, ListTodo, FileDown, Copy, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function Home() {
-  const { calculateViolations, calculateScore, setActivePanel, rectifications, activePanel, copyStoreTemplate } = useAppStore();
+  const { calculateViolations, calculateScore, setActivePanel, rectifications, activePanel, currentStoreId } = useAppStore();
   const [showPhotoCompare, setShowPhotoCompare] = useState(false);
+  const [showCopyTemplate, setShowCopyTemplate] = useState(false);
 
   useEffect(() => {
     calculateViolations();
@@ -19,18 +21,9 @@ export default function Home() {
 
   const pendingCount = rectifications.filter(r => r.status !== 'completed').length;
 
-  const handleCopyTemplate = () => {
-    const sourceId = prompt('请输入源门店ID:');
-    const targetId = prompt('请输入目标门店ID:');
-    if (sourceId && targetId) {
-      copyStoreTemplate(sourceId, targetId);
-      alert('模板复制成功');
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
-      <Header />
+      <Header onOpenCopyTemplate={() => setShowCopyTemplate(true)} />
 
       <div className="flex-1 flex overflow-hidden">
         <ProductLibrary />
@@ -48,7 +41,7 @@ export default function Home() {
             照片对比
           </button>
           <button
-            onClick={handleCopyTemplate}
+            onClick={() => setShowCopyTemplate(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             <Copy className="w-4 h-4" />
@@ -93,7 +86,7 @@ export default function Home() {
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             )}
           >
-            <Image className="w-4 h-4" />
+            <ImageIcon className="w-4 h-4" />
             规则检查
           </button>
           <button
@@ -107,6 +100,7 @@ export default function Home() {
       </div>
 
       <PhotoCompare isOpen={showPhotoCompare} onClose={() => setShowPhotoCompare(false)} />
+      <CopyTemplateModal isOpen={showCopyTemplate} onClose={() => setShowCopyTemplate(false)} defaultSourceId={currentStoreId} />
     </div>
   );
 }

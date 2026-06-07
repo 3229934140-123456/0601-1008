@@ -122,3 +122,40 @@ export function getStatusColor(status: string): string {
 export function generateId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
+
+export function getMaxFacingsForProduct(
+  productId: string,
+  productWidth: number,
+  currentFacings: number,
+  position: number,
+  layerWidth: number,
+  existingProducts: ShelfProduct[],
+  productList: Product[]
+): number {
+  let maxFacings = currentFacings;
+  
+  while (true) {
+    const nextFacings = maxFacings + 1;
+    if (canPlaceProduct(productWidth, nextFacings, position, layerWidth, existingProducts, productList, productId)) {
+      maxFacings = nextFacings;
+    } else {
+      break;
+    }
+    if (maxFacings > 50) break;
+  }
+  
+  return maxFacings;
+}
+
+export function canAddNewProduct(
+  productWidth: number,
+  layerWidth: number,
+  existingProducts: ShelfProduct[],
+  productList: Product[]
+): boolean {
+  const usedWidth = existingProducts.reduce((sum, sp) => {
+    const p = productList.find((prod) => prod.id === sp.productId);
+    return sum + (p ? p.width * sp.facings : 0);
+  }, 0);
+  return (layerWidth - usedWidth) >= productWidth;
+}

@@ -1,4 +1,4 @@
-import { Shield, ListTodo, FileDown, AlertCircle, CheckCircle, Clock, Plus, User, Calendar, Download, Image, FileText } from 'lucide-react';
+import { Shield, ListTodo, FileDown, AlertCircle, CheckCircle, Clock, Plus, User, Calendar, Download, Image, FileText, ListTodo as ListTodoIcon, CheckCheck } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getStatusColor, getStatusLabel } from '@/utils';
 import { cn } from '@/lib/utils';
@@ -8,14 +8,56 @@ import { staffMembers } from '@/data/mockData';
 type TabType = 'rules' | 'rectifications' | 'export';
 
 function RulesPanel() {
-  const { violations, rules, totalScore, shelves, currentShelfId } = useAppStore();
+  const { violations, rules, totalScore, shelves, currentShelfId, addRectificationFromViolation, setActivePanel } = useAppStore();
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
 
   const currentShelfViolations = violations.filter((v) => v.shelfId === currentShelfId);
   const errorCount = currentShelfViolations.filter((v) => v.severity === 'error').length;
   const warningCount = currentShelfViolations.filter((v) => v.severity === 'warning').length;
 
+  const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const handleGenerateRect = async (violation: typeof violations[0]) => {
+    const result = addRectificationFromViolation(violation);
+    if (result.success) {
+      showToast('整改任务已生成', 'success');
+    } else if (result.alreadyExists) {
+      showToast('该违规已生成过整改任务', 'warning');
+    }
+  };
+
+  const handleGenerateAll = () => {
+    let generated = 0;
+    let skipped = 0;
+    currentShelfViolations.forEach(v => {
+      const result = addRectificationFromViolation(v);
+      if (result.success) generated++;
+      else if (result.alreadyExists) skipped++;
+    });
+    if (generated > 0) {
+      showToast(`已生成 ${generated} 条整改任务${skipped > 0 ? `，跳过 ${skipped} 条重复项` : ''}`, 'success');
+    } else {
+      showToast('所有违规都已生成过整改任务', 'warning');
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {toast && (
+        <div className={cn(
+          "absolute top-2 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-xs text-white shadow-lg animate-fade-in",
+          toast.type === 'success' && "bg-green-500",
+          toast.type === 'warning' && "bg-amber-500",
+          toast.type === 'error' && "bg-red-500"
+        )}>
+          {toast.message}
+        </div>
+      )}
+
       <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -53,10 +95,19 @@ function RulesPanel() {
             <span className="text-sm font-medium text-gray-900">{warningCount}</span>
             <span className="text-xs text-gray-500">警告</span>
           </div>
-          <div className="flex items-center gap-1.5 ml-auto">
-            <CheckCircle className="w-4 h-4 text-green-500" />
-            <span className="text-xs text-gray-500">当前货架</span>
-          </div>
+          <button
+            onClick={handleGenerateAll}
+            disabled={currentShelfViolations.length === 0}
+            className={cn(
+              "ml-auto flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors",
+              currentShelfViolations.length > 0
+                ? "bg-blue-600 text-white hover:bg-blue-700"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            )}
+          >
+            <ListTodo className="w-3 h-3" />
+            全部生成整改
+          </button>
         </div>
       </div>
 
@@ -92,6 +143,13 @@ function RulesPanel() {
                       {shelves.find(s => s.id === v.shelfId)?.name}
                     </p>
                   )}
+                  <button
+                    onClick={() => handleGenerateRect(v)}
+                    className="mt-2 flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    <Plus className="w-3 h-3" />
+                    生成整改任务
+                  </button>
                 </div>
               </div>
             </div>
@@ -279,15 +337,41 @@ function RectificationsPanel() {
 }
 
 function ExportPanel() {
-  const { stores, currentStoreId, totalScore, rectifications, shelves } = useAppStore();
+  const { stores, currentStoreId, totalScore, rectifications, shelves, violations, products } = useAppStore();
+  const [exporting, setExporting] = useState<string | null>(null);
   const currentStore = stores.find(s => s.id === currentStoreId);
 
-  const handleExportImage = () => {
-    alert('图片导出功能 - 实际项目中使用 html2canvas 实现');
+  const handleExportImage = async () => {
+    setExporting('image');
+    try {
+      const { exportReportAsImage } = await import('@/utils/export');
+      await exportReportAsImage('export-report-preview', `${currentStore?.name || '门店'}-巡店报告`);
+    } catch (err) {
+      console.error('图片导出失败:', err);
+      alert('图片导出失败，请重试');
+    } finally {
+      setExporting(null);
+    }
   };
 
-  const handleExportPdf = () => {
-    alert('PDF 导出功能 - 实际项目中使用 jspdf + html2canvas 实现');
+  const handleExportPdf = async () => {
+    setExporting('pdf');
+    try {
+      const { exportReportAsPdf } = await import('@/utils/export');
+      await exportReportAsPdf({
+        store: currentStore,
+        score: totalScore,
+        shelves,
+        violations,
+        rectifications,
+        products,
+      }, `${currentStore?.name || '门店'}-巡店报告`);
+    } catch (err) {
+      console.error('PDF导出失败:', err);
+      alert('PDF导出失败，请重试');
+    } finally {
+      setExporting(null);
+    }
   };
 
   const completedRects = rectifications.filter(r => r.status === 'completed').length;
@@ -304,7 +388,7 @@ function ExportPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+        <div id="export-report-preview" className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
           <h4 className="text-sm font-medium text-gray-900 mb-3">报告预览</h4>
           
           <div className="space-y-3 text-xs">
@@ -372,17 +456,29 @@ function ExportPanel() {
       <div className="p-4 border-t border-gray-200 bg-white space-y-2">
         <button
           onClick={handleExportPdf}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={exporting !== null}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 py-2.5 text-sm rounded-lg transition-colors",
+            exporting === 'pdf'
+              ? "bg-blue-400 text-white cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          )}
         >
           <FileText className="w-4 h-4" />
-          导出 PDF 报告
+          {exporting === 'pdf' ? '导出中...' : '导出 PDF 报告'}
         </button>
         <button
           onClick={handleExportImage}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors"
+          disabled={exporting !== null}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 py-2.5 text-sm rounded-lg transition-colors",
+            exporting === 'image'
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          )}
         >
           <Image className="w-4 h-4" />
-          导出为图片
+          {exporting === 'image' ? '导出中...' : '导出为图片'}
         </button>
       </div>
     </div>
